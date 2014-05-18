@@ -1,236 +1,151 @@
 'use strict';
-angular.module('slonoed.daterange', [])
-    .service('slDateProcessor', function() {
-        this.isSame = function(f, s) {
+angular.module('ngDateRange', []).directive('ngDateRange', function() {
+  return {
+    restrict    : 'E',
+    replace     : true,
+    scope       : {
+      start     : '=',
+      finish    : '='
+    },
+    transclude  : true,
+    templateUrl : 'daterange.html',
+    controller: function($scope) {
+      $scope.apply = function() {
+        $scope.start  = $scope.startDate.hour(0).minute(0).second(0).toDate();
+        $scope.finish = $scope.endDate.hour(23).minute(59).second(59).toDate();
+      };
 
-            f = new Date(f._d || f);
-            f.setSeconds(0);
-            f.setMilliseconds(0);
-            f.setMinutes(0);
-            f.setHours(0);
-            s = new Date(s._d || s);
-            s.setSeconds(0);
-            s.setMilliseconds(0);
-            s.setMinutes(0);
-            s.setHours(0);
-            return f.getTime() == s.getTime();
+      $scope.cancel = function() {
+        $scope.clearRange();
+      };
+
+      $scope.clearRange = function() {
+        $scope.startDate = moment.utc($scope.start).startOf('day');
+        $scope.endDate   = moment.utc($scope.finish);
+
+        if (!$scope.endDate.isSame($scope.endDate.startOf('day')))
+          $scope.endDate = $scope.endDate.add(1, 'day').startOf('day');
+      };
+
+      $scope.clearRange();
+    },
+    link: function(scope, element, attrs) {
+      if (attrs.autoApply != null) {
+        var apply = function() {
+          scope.start  = scope.startDate.hour(0).minute(0).second(0).toDate();
+          scope.finish = scope.endDate.hour(23).minute(59).second(59).toDate();
         };
 
-        this.isBefore = function(f, s) {
-            f = new Date(f._d || f);
-            f.setSeconds(0);
-            f.setMilliseconds(0);
-            f.setMinutes(0);
-            f.setHours(0);
-            s = new Date(s._d || s);
-            s.setSeconds(0);
-            s.setMilliseconds(0);
-            s.setMinutes(0);
-            s.setHours(0);
-            return f.getTime() < s.getTime();
-        };
+        scope.$watchCollection("startDate", apply);
+        scope.$watchCollection("endDate"  , apply);
+      }
+    }
+  };
+}).directive('ngDateRangeCalendar', function() {
+  var calendars = {};
 
-        this.isAfter = function(f, s) {
+  var buildCalendar = function(month, year, side) {
+    var cacheKey = month + ' + ' + year;
+    if (calendars[cacheKey])
+      return calendars[cacheKey];
 
-            f = new Date(f._d || f);
-            f.setSeconds(0);
-            f.setMilliseconds(0);
-            f.setMinutes(0);
-            s = new Date(s._d || s);
-            s.setSeconds(0);
-            s.setMilliseconds(0);
-            s.setMinutes(0);
-            return f.getTime() > s.getTime();
-        };
+    var firstDay  = moment.utc([year, month, 1]);
+    var lastMonth = moment.utc(firstDay).subtract('month', 1).month();
+    var lastYear  = moment.utc(firstDay).subtract('month', 1).year();
 
-        this.one = 1;
-    })
-    .directive('slDaterange', ['$document', function($document) {
-        return {
-            restrict: 'E',
-            replace: true,
-            scope: {
-                'startDateRaw': '=start',
-                'endDateRaw': '=finish'
-            },
-            transclude: true,
-            templateUrl: 'daterange.html',
-            link: function(scope, element, attrs) {
-                scope.active = false;
+    var daysInLastMonth = moment.utc([lastYear, lastMonth]).daysInMonth();
+    var dayOfWeek       = firstDay.day();
 
+    var calendar = [];
+    var i, j;
+    for (i = 0; i < 6; ++i)
+      calendar[i] = [];
 
-                scope.apply = function() {
-                    scope.startDateRaw = scope.startDate.toDate();
-                    scope.endDateRaw = scope.endDate.toDate();
-                    scope.active = false;
-                };
+    var startDay = daysInLastMonth - dayOfWeek + 1;
 
-                scope.clearRange = function() {
-                    scope.startDate = moment(scope.startDateRaw).startOf('day');
-                    scope.endDate = moment(scope.endDateRaw);
+    if (startDay > daysInLastMonth)
+      startDay -= 7;
 
-                    // if end date not start of day - get next day start timestamp
-                    if (!scope.endDate.isSame(scope.endDate.startOf('day'))) {
-                        scope.endDate = scope.endDate.add(1, 'day').startOf('day');
-                    }
-                };
+    if (!dayOfWeek)
+      startDay = daysInLastMonth - 6;
 
-                scope.cancel = function() {
-                    scope.clearRange();
-                    scope.active = false;
-                };
+    var curDate;
+    if (side === 'right')
+      curDate = moment.utc([lastYear, lastMonth, startDay]).endOf('day');
+    else
+      curDate = moment.utc([lastYear, lastMonth, startDay]).startOf('day');
 
-                scope.toggle = function() {
-                    scope.active = !scope.active;
-                    // update date after open
-                    if (scope.active) {
-                        scope.clearRange();
-                    }
-                };
+    for (i = 0; i < 6; ++i)
+      for (j = 0; j < 7; ++j)
+        calendar[i][j] = curDate = moment.utc(curDate).add('day', 1);
 
-                scope.clearRange();
-            }
-        };
-    }])
-    .directive('slCalendar', ['slDateProcessor', function(dateProcessor) {
-        var locale = {
-            applyLabel: 'Apply',
-            clearLabel: "Clear",
-            fromLabel: 'From',
-            toLabel: 'To',
-            weekLabel: 'W',
-            customRangeLabel: 'Custom Range',
-            daysOfWeek: moment()._lang._weekdaysMin,
-            monthNames: moment()._lang._monthsShort,
-            firstDay: 0
-        };
+    calendars[cacheKey] = calendar;
+    return calendar;
+  };
 
-        var calendars = {};
+  return {
+    restrict: 'E',
+    replace: true,
+    scope: {
+      startDate : '=start',
+      endDate   : '=finish'
+    },
+    templateUrl: 'calendar.html',
+    controller: function($scope) {
+      $scope.inRange = function(day) {
+        return (day.isAfter($scope.startDate, 'day') && day.isBefore($scope.endDate, 'day')) ||
+          day.isSame($scope.startDate, 'day') || day.isSame($scope.endDate, 'day');
+      };
 
-        function buildCalendar(month, year, side) {
-            var cacheKey = month + ' + ' + year;
-            if (calendars[cacheKey]) {
-                return calendars[cacheKey];
-            }
+      $scope.getDayNumber = function(day) {
+        return day.date();
+      };
 
-            var firstDay = moment([year, month, 1]);
-            var lastMonth = moment(firstDay).subtract('month', 1).month();
-            var lastYear = moment(firstDay).subtract('month', 1).year();
+      $scope.isOff = function(day) {
+        return (day.month() !== $scope.current.month()) || (!$scope.left && day.isBefore($scope.startDate, 'day'));
+      };
 
-            var daysInLastMonth = moment([lastYear, lastMonth]).daysInMonth();
+      $scope.updateCalendar = function() {
+        $scope.calendar  = buildCalendar($scope.current.month(), $scope.current.year(), 1);
+        $scope.monthName = moment.utc()._lang._monthsShort[$scope.current.month()] + $scope.current.format(' YYYY');
+      };
 
-            var dayOfWeek = firstDay.day();
+      $scope.isActive = function(day) {
+        if ($scope.left)
+          return day.isSame($scope.startDate, 'day');
 
-            //initialize a 6 rows x 7 columns array for the calendar
-            var calendar = [];
-            for (var i = 0; i < 6; i++) {
-                calendar[i] = [];
-            }
+        return day.isSame($scope.endDate, 'day');
+      };
 
-            //populate the calendar with date objects
-            var startDay = daysInLastMonth - dayOfWeek + locale.firstDay + 1;
-            if (startDay > daysInLastMonth) {
-                startDay -= 7;
-            }
+      $scope.daysOfWeek = angular.copy(moment.utc()._lang._weekdaysMin);
+      $scope.daysOfWeek.push($scope.daysOfWeek.shift());
+      $scope.current    = moment.utc([$scope.startDate.year(), $scope.startDate.month(), 1]);
 
-            if (dayOfWeek == locale.firstDay) {
-                startDay = daysInLastMonth - 6;
-            }
+      $scope.updateCalendar();
 
-            var curDate;
-            if (side == 'right') {
-                curDate = moment([lastYear, lastMonth, startDay]).endOf('day');
-            } else {
-                curDate = moment([lastYear, lastMonth, startDay]).startOf('day');
-            }
-            for (var i = 0, col = 0, row = 0; i < 42; i++, col++, curDate = moment(curDate).add('day', 1)) {
-                if (i > 0 && col % 7 == 0) {
-                    col = 0;
-                    row++;
-                }
-                calendar[row][col] = curDate;
-            }
+      $scope.pickDate = function(date) {
+        if (!$scope.left && date.isBefore($scope.startDate))
+          return;
 
-            calendars[cacheKey] = calendar;
-            return calendar;
-
+        if ($scope.left && date.isAfter($scope.endDate, 'day')) {
+          $scope.startDate = date;
+          $scope.endDate   = $scope.startDate.clone().add(1, 'day');
         }
+        $scope[$scope.left ? 'startDate' : 'endDate'] = date;
+      };
 
+      $scope.setPrevMonth = function() {
+        $scope.current.subtract('month', 1);
+        $scope.updateCalendar();
+      };
 
-
-        return {
-            restrict: 'E',
-            replace: true,
-            scope: {
-                startDate: '=sdate',
-                endDate: '=edate'
-            },
-            templateUrl: 'calendar.html',
-            link: function(scope, element, attrs) {
-                scope.left = attrs.left === '';
-
-
-                scope.inRange = function(date) {
-                    return (dateProcessor.isAfter(date, scope.startDate) && dateProcessor.isBefore(date, scope.endDate)) ||
-                        dateProcessor.isSame(date, scope.startDate) || dateProcessor.isSame(date, scope.endDate);
-                };
-
-                scope.getDayNumber = function(day) {
-                    return day.date();
-                };
-
-                scope.isOff = function(day) {
-                    var anotherMonth = day.month() != scope.current.month();
-                    var beforeStartInRight = !scope.left && dateProcessor.isBefore(day, scope.startDate);
-                    return anotherMonth || beforeStartInRight;
-                };
-
-                scope.updateCalendar = function() {
-                    var calendar = buildCalendar(scope.current.month(), scope.current.years(), 1);
-                    scope.calendar = calendar;
-                    scope.monthName = locale.monthNames[scope.current.month()] + scope.current.format(" YYYY");
-                };
-
-
-                scope.isActive = function(day) {
-                    // on left calendar check with startDate, on right - with endDate
-                    if (scope.left) {
-                        return dateProcessor.isSame(day, scope.startDate)
-                    }
-                    else {
-                        return dateProcessor.isSame(day, scope.endDate)
-                    }
-                };
-
-
-                scope.locale = locale;
-                scope.daysOfWeek = moment()._lang._weekdaysMin;
-
-
-                scope.current = moment([scope.startDate.year(), scope.startDate.month(), 1]);
-
-                scope.updateCalendar();
-
-                scope.pickDate = function(date) {
-                    if (!scope.left && date.isBefore(scope.startDate)) {
-                        return;
-                    }
-                    if (scope.left && dateProcessor.isAfter(date, scope.endDate)) {
-                        scope.startDate = date;
-                        scope.endDate = scope.startDate.clone().add(1, 'day');
-                    }
-                    scope[scope.left ? 'startDate' : 'endDate'] = date;
-                };
-
-                scope.setPrevMonth = function() {
-                    scope.current.subtract('month', 1);
-                    scope.updateCalendar();
-                };
-                scope.setNextMonth = function() {
-                    scope.current.add('month', 1);
-                    scope.updateCalendar();
-                };
-
-            }
-        };
-    }])
+      $scope.setNextMonth = function() {
+        $scope.current.add('month', 1);
+        $scope.updateCalendar();
+      };
+    },
+    link: function(scope, element, attrs) {
+      scope.left = attrs.left === '';
+    }
+  };
+});

@@ -1,0 +1,9 @@
+{
+  "name": "angular-daterange",
+  "version": "0.1.0",
+  "main": "angular-daterange.js",
+  "dependencies": {
+    "moment": ">=2.6.0",
+    "angular": ">=1.2.0"
+  }
+}
